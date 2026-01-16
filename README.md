@@ -36,7 +36,7 @@ Official SDK for developing external addons for Novadesk.
 ```cpp
 #include <NovadeskAPI/novadesk_addon.h>
 
-NOVADESK_ADDON_INIT(ctx) {
+NOVADESK_ADDON_INIT(ctx, hMsgWnd) {
     // Use the C++ helper to manage registration
     novadesk::Addon addon(ctx);
 
@@ -47,6 +47,13 @@ NOVADESK_ADDON_INIT(ctx) {
     addon.RegisterObject("math", [](novadesk::Addon& math) {
         math.RegisterNumber("PI", 3.14159);
         math.RegisterArray("primes", {2, 3, 5, 7, 11});
+    });
+
+    // JavaScript Callbacks
+    addon.RegisterFunction("onPoke", [](duk_context* ctx) -> duk_ret_t {
+        novadesk::JsFunction cb(ctx, 0);
+        if (cb.IsValid()) cb.Call("Ouch!");
+        return 0;
     });
 
     // The object is automatically returned to JS

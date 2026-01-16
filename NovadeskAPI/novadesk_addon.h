@@ -7,20 +7,21 @@
 
 #pragma once
 
+#include <Windows.h>
+#include "duktape/duktape.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "duktape/duktape.h"
-
 // Define the initialization function signature
-typedef void (*NovadeskAddonInitFn)(duk_context* ctx);
+typedef void (*NovadeskAddonInitFn)(duk_context* ctx, HWND hMsgWnd);
 
 // Define the cleanup function signature (optional)
 typedef void (*NovadeskAddonUnloadFn)();
 
 // Entry Point Macros
-#define NOVADESK_ADDON_INIT(ctx) extern "C" __declspec(dllexport) void NovadeskAddonInit(duk_context* ctx)
+#define NOVADESK_ADDON_INIT(ctx, hMsgWnd) extern "C" __declspec(dllexport) void NovadeskAddonInit(duk_context* ctx, HWND hMsgWnd)
 #define NOVADESK_ADDON_UNLOAD() extern "C" __declspec(dllexport) void NovadeskAddonUnload()
 
 #ifdef __cplusplus
@@ -31,6 +32,75 @@ typedef void (*NovadeskAddonUnloadFn)();
 
 // C++ Helper Utilities
 namespace novadesk {
+    class JsFunction {
+    public:
+        JsFunction(duk_context* ctx, duk_idx_t idx) : m_ctx(ctx) {
+            if (duk_is_function(m_ctx, idx)) {
+                m_ptr = duk_get_heapptr(m_ctx, idx);
+            } else {
+                m_ptr = nullptr;
+            }
+        }
+
+        bool IsValid() const { return m_ptr != nullptr; }
+
+        // Call the JS function with 0 arguments
+        void Call() {
+            if (!IsValid()) return;
+            duk_push_heapptr(m_ctx, m_ptr);
+            if (duk_pcall(m_ctx, 0) != 0) {
+                duk_pop(m_ctx); // pop error
+            } else {
+                duk_pop(m_ctx); // pop result
+            }
+        }
+
+        // Call the JS function with a string argument
+        void Call(const char* arg) {
+            if (!IsValid()) return;
+            duk_push_heapptr(m_ctx, m_ptr);
+            duk_push_string(m_ctx, arg);
+            if (duk_pcall(m_ctx, 1) != 0) {
+                duk_pop(m_ctx);
+            } else {
+                duk_pop(m_ctx);
+            }
+        }
+
+        // Call the JS function with a number argument
+        void Call(double arg) {
+            if (!IsValid()) return;
+            duk_push_heapptr(m_ctx, m_ptr);
+            duk_push_number(m_ctx, arg);
+            if (duk_pcall(m_ctx, 1) != 0) {
+                duk_pop(m_ctx);
+            } else {
+                duk_pop(m_ctx);
+            }
+        }
+
+    private:
+        duk_context* m_ctx;
+        void* m_ptr;
+    };
+
+    class Dispatcher {
+    public:
+        Dispatcher(HWND hMsgWnd) : m_hWnd(hMsgWnd) {}
+
+        // Dispatch a task to the main thread.
+        // The callback should be a static function: void MyCallback(void* data)
+        void Dispatch(void (*fn)(void*), void* data = nullptr) {
+            if (m_hWnd) {
+                PostMessage(m_hWnd, WM_NOVADESK_DISPATCH, (WPARAM)fn, (LPARAM)data);
+            }
+        }
+
+    private:
+        HWND m_hWnd;
+        static const UINT WM_NOVADESK_DISPATCH = WM_USER + 101;
+    };
+
     class Addon {
     public:
         Addon(duk_context* ctx) : m_ctx(ctx) {
@@ -66,7 +136,11 @@ namespace novadesk {
 
         // Register a string property
         void RegisterString(const char* name, const char* value) {
-            duk_push_string(m_ctx, value);
+            if (value) {
+                duk_push_string(m_ctx, value);
+            } else {
+                duk_push_null(m_ctx);
+            }
             duk_put_prop_string(m_ctx, -2, name);
         }
 
