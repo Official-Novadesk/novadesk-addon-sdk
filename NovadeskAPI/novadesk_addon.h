@@ -26,12 +26,24 @@ typedef void (*NovadeskAddonUnloadFn)();
 #ifdef __cplusplus
 }
 
+#include <vector>
+#include <string>
+
 // C++ Helper Utilities
 namespace novadesk {
     class Addon {
     public:
         Addon(duk_context* ctx) : m_ctx(ctx) {
             duk_push_object(m_ctx);
+        }
+
+        // Register a nested object
+        template<typename F>
+        void RegisterObject(const char* name, F populateFunc) {
+            duk_push_object(m_ctx);
+            Addon sub(m_ctx, true);
+            populateFunc(sub);
+            duk_put_prop_string(m_ctx, -2, name);
         }
 
         // Register a C-style function
@@ -70,7 +82,30 @@ namespace novadesk {
             duk_put_prop_string(m_ctx, -2, name);
         }
 
+        // Register an array of strings
+        void RegisterArray(const char* name, const std::vector<std::string>& values) {
+            duk_idx_t arr_idx = duk_push_array(m_ctx);
+            for (size_t i = 0; i < values.size(); ++i) {
+                duk_push_string(m_ctx, values[i].c_str());
+                duk_put_prop_index(m_ctx, arr_idx, (duk_uarridx_t)i);
+            }
+            duk_put_prop_string(m_ctx, -2, name);
+        }
+
+        // Register an array of numbers
+        void RegisterArray(const char* name, const std::vector<double>& values) {
+            duk_idx_t arr_idx = duk_push_array(m_ctx);
+            for (size_t i = 0; i < values.size(); ++i) {
+                duk_push_number(m_ctx, values[i]);
+                duk_put_prop_index(m_ctx, arr_idx, (duk_uarridx_t)i);
+            }
+            duk_put_prop_string(m_ctx, -2, name);
+        }
+
     private:
+        // Internal constructor for sub-objects
+        Addon(duk_context* ctx, bool) : m_ctx(ctx) {}
+
         duk_context* m_ctx;
     };
 }

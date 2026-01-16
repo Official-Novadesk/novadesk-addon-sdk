@@ -7,10 +7,17 @@ NOVADESK_ADDON_INIT(ctx) {
 
     // Register properties and functions easily
     addon.RegisterStringFunction("hello", "Hello from the abstracted Addon SDK!");
-
     addon.RegisterString("version", "1.0.0");
-    addon.RegisterNumber("id", 42);
-    addon.RegisterBool("isNative", true);
+
+    // Nest objects for cleaner APIs
+    addon.RegisterObject("utils", [](novadesk::Addon& utils) {
+        utils.RegisterNumber("id", 123);
+        utils.RegisterStringFunction("ping", "pong");
+        
+        // Return arrays of data
+        utils.RegisterArray("tags", {"cpp", "native", "addon"});
+        utils.RegisterArray("versions", {1.0, 1.1, 2.0});
+    });
 }
 
 // Optional: The unload function is called when the script reloads or Novadesk exits.

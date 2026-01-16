@@ -41,8 +41,13 @@ NOVADESK_ADDON_INIT(ctx) {
     novadesk::Addon addon(ctx);
 
     addon.RegisterString("version", "1.0.0");
-    
     addon.RegisterStringFunction("hello", "Hello from the abstracted SDK!");
+
+    // Nest objects for professional APIs
+    addon.RegisterObject("math", [](novadesk::Addon& math) {
+        math.RegisterNumber("PI", 3.14159);
+        math.RegisterArray("primes", {2, 3, 5, 7, 11});
+    });
 
     // The object is automatically returned to JS
 }
