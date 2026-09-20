@@ -7,6 +7,26 @@ novadesk::JsFunction* g_Callback = nullptr;
 novadesk::Dispatcher* g_Dispatcher = nullptr;
 const NovadeskHostAPI* g_Host = nullptr;
 
+int JsGetAppInfo(novadesk_context ctx) {
+    novadesk::App app(g_Host);
+    if (!app.IsAvailable()) {
+        g_Host->PushNull(ctx);
+        return 1;
+    }
+
+    g_Host->PushObject(ctx);
+    g_Host->RegisterNumber(ctx, "hostApiVersion", g_Host->apiVersion);
+    g_Host->RegisterString(ctx, "productVersion", app.GetProductVersion());
+    g_Host->RegisterString(ctx, "fileVersion", app.GetFileVersion());
+    g_Host->RegisterString(ctx, "novadeskVersion", app.GetNovadeskVersion());
+    g_Host->RegisterString(ctx, "appDataPath", app.GetAppDataPath());
+    g_Host->RegisterString(ctx, "settingsFilePath", app.GetSettingsFilePath());
+    g_Host->RegisterString(ctx, "logPath", app.GetLogPath());
+    g_Host->RegisterBool(ctx, "portable", app.IsPortable() ? 1 : 0);
+    g_Host->RegisterBool(ctx, "firstRun", app.IsFirstRun() ? 1 : 0);
+    return 1;
+}
+
 // This function runs on the MAIN THREAD
 void OnPulse(void* data) {
     if (g_Callback && g_Callback->IsValid()) {
@@ -28,6 +48,7 @@ NOVADESK_ADDON_INIT(ctx, hMsgWnd, host) {
         g_Host->PushString(ctx, "Hello from native C++ addon!");
         return 1;
     });
+    addon.RegisterFunction("getAppInfo", JsGetAppInfo, 0);
 
     // Nest objects for cleaner APIs
     addon.RegisterObject("utils", [](novadesk::Addon& utils) {
