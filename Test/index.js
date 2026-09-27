@@ -13,6 +13,12 @@ try {
         loaded.push(hello);
         console.log("  Success! Version: " + hello.version);
         console.log("  Addon says: " + hello.hello());
+        const appInfo = hello.getAppInfo();
+        console.log("  Host API version: " + appInfo.hostApiVersion);
+        console.log("  Novadesk version: " + appInfo.novadeskVersion);
+        console.log("  Product version: " + appInfo.productVersion);
+        console.log("  App data path: " + appInfo.appDataPath);
+        console.log("  Portable: " + appInfo.portable + ", first run: " + appInfo.firstRun);
 
         hello.onEvent(function (msg) {
             console.log("  [Hello Event]: " + msg);

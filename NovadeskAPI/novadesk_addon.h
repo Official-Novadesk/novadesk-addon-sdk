@@ -17,6 +17,9 @@ extern "C" {
 /// Opaque context handle representing the JavaScript engine instance.
 typedef void* novadesk_context;
 
+/// Host ABI version required by addons built with this SDK.
+#define NOVADESK_ADDON_API_VERSION 2
+
 /**
  * @struct NovadeskHostAPI
  * @brief Table of function pointers provided by the Novadesk core.
@@ -25,6 +28,8 @@ typedef void* novadesk_context;
  * Host API functions MUST only be called from the main thread.
  */
 struct NovadeskHostAPI {
+    /// ABI version. Always the first field in the table.
+    unsigned int apiVersion;
     /** Export properties to JavaScript */
     void (*RegisterString)(novadesk_context ctx, const char* name, const char* value);
     void (*RegisterNumber)(novadesk_context ctx, const char* name, double value);
@@ -41,6 +46,7 @@ struct NovadeskHostAPI {
     void (*PushBool)(novadesk_context ctx, int value);
     void (*PushNull)(novadesk_context ctx);
     void (*PushObject)(novadesk_context ctx);
+    void (*PushArray)(novadesk_context ctx);
 
     /** Retrieve arguments from JavaScript */
     double (*GetNumber)(novadesk_context ctx, int index);
@@ -55,6 +61,9 @@ struct NovadeskHostAPI {
     int (*IsFunction)(novadesk_context ctx, int index);
     int (*IsNull)(novadesk_context ctx, int index);
 
+    /** Object Properties */
+    int (*GetProperty)(novadesk_context ctx, int objIndex, const char* name);
+
     /** Stack & Error Control */
     int (*GetTop)(novadesk_context ctx);
     void (*Pop)(novadesk_context ctx);
@@ -63,7 +72,20 @@ struct NovadeskHostAPI {
 
     /** JavaScript Callbacks */
     void* (*JsGetFunctionPtr)(novadesk_context ctx, int index);
+    void (*FreeFunction)(novadesk_context ctx, void* funcPtr);
     void (*JsCallFunction)(novadesk_context ctx, void* funcPtr, int nargs);
+    void (*JsCallFunctionNoArgs)(novadesk_context ctx, void* funcPtr);
+    void (*ArrayPushObject)(novadesk_context ctx);
+
+    /** Read-only selected app-module APIs. */
+    const char* (*GetAppProductVersion)();
+    const char* (*GetAppFileVersion)();
+    const char* (*GetAppNovadeskVersion)();
+    const char* (*GetAppDataPath)();
+    const char* (*GetAppSettingsFilePath)();
+    const char* (*GetAppLogPath)();
+    int (*IsAppPortable)();
+    int (*IsAppFirstRun)();
 };
 
 // Function signatures for the DLL entry points
@@ -74,7 +96,9 @@ typedef void (*NovadeskAddonUnloadFn)();
  * @brief Defines the main entry point for the addon.
  * Called when system.loadAddon() is executed.
  */
-#define NOVADESK_ADDON_INIT(ctx, hMsgWnd, host) extern "C" __declspec(dllexport) void NovadeskAddonInit(novadesk_context ctx, HWND hMsgWnd, const NovadeskHostAPI* host)
+#define NOVADESK_ADDON_INIT(ctx, hMsgWnd, host) \
+    extern "C" __declspec(dllexport) unsigned int NovadeskAddonApiVersion() { return NOVADESK_ADDON_API_VERSION; } \
+    extern "C" __declspec(dllexport) void NovadeskAddonInit(novadesk_context ctx, HWND hMsgWnd, const NovadeskHostAPI* host)
 
 /**
  * @brief Defines the optional cleanup hook.
@@ -89,6 +113,25 @@ typedef void (*NovadeskAddonUnloadFn)();
 #include <string>
 
 namespace novadesk {
+
+    /** Read-only access to selected functions from Novadesk's app module. */
+    class App {
+    public:
+        explicit App(const NovadeskHostAPI* host) : m_host(host) {}
+
+        bool IsAvailable() const { return m_host && m_host->apiVersion >= NOVADESK_ADDON_API_VERSION; }
+        const char* GetProductVersion() const { return IsAvailable() ? m_host->GetAppProductVersion() : ""; }
+        const char* GetFileVersion() const { return IsAvailable() ? m_host->GetAppFileVersion() : ""; }
+        const char* GetNovadeskVersion() const { return IsAvailable() ? m_host->GetAppNovadeskVersion() : ""; }
+        const char* GetAppDataPath() const { return IsAvailable() ? m_host->GetAppDataPath() : ""; }
+        const char* GetSettingsFilePath() const { return IsAvailable() ? m_host->GetAppSettingsFilePath() : ""; }
+        const char* GetLogPath() const { return IsAvailable() ? m_host->GetAppLogPath() : ""; }
+        bool IsPortable() const { return IsAvailable() && m_host->IsAppPortable() != 0; }
+        bool IsFirstRun() const { return IsAvailable() && m_host->IsAppFirstRun() != 0; }
+
+    private:
+        const NovadeskHostAPI* m_host;
+    };
     
     /**
      * @class JsFunction
@@ -99,6 +142,15 @@ namespace novadesk {
         JsFunction(novadesk_context ctx, const NovadeskHostAPI* host, int idx) : m_ctx(ctx), m_host(host) {
             m_ptr = m_host->JsGetFunctionPtr(m_ctx, idx);
         }
+
+        ~JsFunction() {
+            if (m_ptr && m_host && m_host->FreeFunction) {
+                m_host->FreeFunction(m_ctx, m_ptr);
+            }
+        }
+
+        JsFunction(const JsFunction&) = delete;
+        JsFunction& operator=(const JsFunction&) = delete;
 
         bool IsValid() const { return m_ptr != nullptr; }
 
@@ -198,6 +250,8 @@ namespace novadesk {
         bool IsObject(int idx) { return m_host->IsObject(m_ctx, idx) != 0; }
         bool IsFunction(int idx) { return m_host->IsFunction(m_ctx, idx) != 0; }
         bool IsNull(int idx) { return m_host->IsNull(m_ctx, idx) != 0; }
+
+        bool GetProperty(int objIndex, const char* name) { return m_host->GetProperty(m_ctx, objIndex, name) != 0; }
 
         double GetNumber(int idx) { return m_host->GetNumber(m_ctx, idx); }
         const char* GetString(int idx) { return m_host->GetString(m_ctx, idx); }
